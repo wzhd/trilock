@@ -43,7 +43,8 @@ pub struct TriLock<T> {
 }
 
 pub struct Guard<'a, T> {
-    inner: &'a Inner<T>
+    mark: usize,
+    inner: &'a Inner<T>,
 }
 
 pub struct TriLockFut<'a, T> {
@@ -87,8 +88,11 @@ impl<T> TriLock<T> {
         match mem::replace(&mut state.idle, false) {
             true => {
                 state.list[self.mark].take();
-                Poll::Ready(Guard { inner: &*self.inner })
-            },
+                Poll::Ready(Guard {
+                    mark: self.mark,
+                    inner: &*self.inner,
+                })
+            }
             false => {
                 let waker = cx.waker().clone();
                 state.list[self.mark] = Some(waker);
@@ -146,7 +150,8 @@ impl<T> Drop for Guard<'_, T> {
 
         state.idle = true;
 
-        for e in &mut state.list {
+        for i in 1..3 {
+            let e = &mut state.list[(self.mark + i) % 3];
             if let Some(waker) = e.take() {
                 waker.wake();
                 break
